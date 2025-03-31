@@ -4,11 +4,12 @@ const url = self.location.toString();
 let index = url.lastIndexOf('/');
 index = url.lastIndexOf('/', index - 1);
 
-const TF_JS_URL = url.substring(0, index) + "/@tensorflow/tfjs/dist/tf.min.js";
-const TF_JS_CDN_URL = "https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@4.2.0/dist/tf.min.js";
+const TF_JS_CDN_URL = "https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@4.22.0/dist/tf.min.js";
 async function load_model() {
 
     const model = await (async () => {
+        await tf.ready();
+        console.log('Loading model ...');
         try {
             self.postMessage({ type: 'progress', progress: 0.1, message: 'Loading model' });
             return await tf.loadGraphModel('./model.json', {
@@ -33,15 +34,18 @@ async function load_model() {
     return model;
 }
 
-async function main() {
+let target_canvas = null;
+let ddim_skips = 0;
 
+async function main() {
     try {
+        await import('https://cdn.jsdelivr.net/npm/@tensorflow/tfjs-backend-webgpu@4.22.0/dist/tf-backend-webgpu.min.js');
+        await tf.setBackend('webgpu');
+        console.log('Successfully loaded WebGPU backend');
+    } catch {
+        await import('https://cdn.jsdelivr.net/npm/@tensorflow/tfjs-backend-webgl@4.22.0/dist/tf-backend-webgl.min.js');
         await tf.setBackend('webgl');
         console.log('Successfully loaded WebGL backend');
-    } catch {
-        await import('https://cdn.jsdelivr.net/npm/@tensorflow/tfjs-backend-wasm@4.2.0/dist/tf-backend-wasm.min.js');
-        await tf.setBackend('wasm');
-        console.log('Successfully loaded WASM backend');
     }
 
 
@@ -104,8 +108,6 @@ async function main() {
     });
 
     const ddpm_p_sample = (xt, timeStep) => {
-        // When using WebGL backend, tf.Tensor memory must be managed explicitly (it is not sufficient to let a tf.Tensor go out of scope for its memory to be released).
-        // Here we use an array to collect all tensors to be disposed when this method exits
         const collection = new Array();
 
         const time_input = tf.tensor(timeStep, [1]/*shape*/, 'int32' /* model.signature.inputs.time_input.dtype */);
@@ -154,9 +156,50 @@ async function main() {
         return xt_minus_one;
     };// ddpm_p_sample()
 
+
+    const ddim_p_sample = (xt, timeStep, prevTimeStep) => {
+        const collection = new Array();
+
+        const time_input = tf.tensor(timeStep, [1]/*shape*/, 'int32' /* model.signature.inputs.time_input.dtype */);
+        collection.push(time_input);
+
+        const inputs = {
+            time_input: time_input,
+            image_input: xt
+        };
+
+        const epsilon = model.predict(inputs);
+        collection.push(epsilon);
+
+        const epsilon2 = epsilon.mul(stable_sqrt(1 - alphas_cumprod[timeStep]));
+        collection.push(epsilon2);
+
+        const xt_sub_epsilon2 = xt.sub(epsilon2);
+        collection.push(xt_sub_epsilon2);
+
+        const x0 = xt_sub_epsilon2.div(stable_sqrt(alphas_cumprod[timeStep]));
+        collection.push(x0);
+
+        const clipped_x0 = tf.clipByValue(x0, -1.0, 1.0);
+        collection.push(clipped_x0);
+
+        const x0_coefficient = stable_sqrt(alphas_cumprod[prevTimeStep]) - stable_sqrt(alphas_cumprod[timeStep] * (1 - alphas_cumprod[prevTimeStep]) / (1 - alphas_cumprod[timeStep]));
+        const x0_multipled_by_coef = clipped_x0.mul(x0_coefficient);
+        collection.push(x0_multipled_by_coef);
+
+        const xt_coefficient = stable_sqrt((1 - alphas_cumprod[prevTimeStep]) / (1 - alphas_cumprod[timeStep]));
+        const xt_multipled_by_coef = xt.mul(xt_coefficient);
+        collection.push(xt_multipled_by_coef);
+
+        const mean = x0_multipled_by_coef.add(xt_multipled_by_coef);
+
+        collection.forEach((t) => t.dispose());
+        return mean;
+    };// ddim_p_sample()
+
     const scale = 2;
     const offscreen = new OffscreenCanvas(image_size * scale, image_size * scale);
-    const get_image = (img) => {
+    const render_image = (img) => {
         const height = img[0].length;
         const width = img[0][0].length;
 
@@ -190,8 +233,45 @@ async function main() {
 
         ctx.putImageData(id, 0, 0);
 
-        return offscreen.transferToImageBitmap();
+        const target_context = target_canvas.getContext("bitmaprenderer");
+        const bitmap = offscreen.transferToImageBitmap();
+        target_context.transferFromImageBitmap(bitmap);
+
+        return bitmap;
     };// produce_image()
+
+    for (; ;) {
+        let timestep = timesteps - 1;
+        const shape = [1, image_size, image_size, 3];
+        let xt = tf.randomNormal(shape, 0/*mean*/, 1/*stddev*/, 'float32', Math.random() * 10000/*seed*/);
+        for (; ;) {
+            const prevTimestep = ddim_skips ? Math.max(0, timestep - ddim_skips) : timestep - 1;
+            const xt_pre = ddim_skips ? ddim_p_sample(xt, timestep, prevTimestep) : ddpm_p_sample(xt, timestep);
+            xt.dispose();
+            xt = xt_pre;
+
+            const img = await xt_pre.array();
+            render_image(img);
+
+            let image_blob = null;
+            if (timestep == 0) {
+                image_blob = await target_canvas.convertToBlob();
+            }
+
+            self.postMessage({
+                type: 'image',
+                timestep: timestep,
+                imageBlob: image_blob,
+                percent: (timesteps - timestep) / (1.0 * timesteps)
+            });
+
+            timestep = prevTimestep;
+
+            if (image_blob)
+                break;
+        }
+        xt.dispose();
+    }
 
     for (; ;) {
         let timestep = timesteps - 1;
@@ -202,44 +282,53 @@ async function main() {
             xt.dispose();
             xt = xt_minus_one;
 
+            const img = await xt_minus_one.array();
+            render_image(img);
+
+            let image_blob = null;
+            if (timestep == 0) {
+                image_blob = await target_canvas.convertToBlob();
+            }
+
             self.postMessage({
                 type: 'image',
                 timestep: timestep,
-                image: get_image(xt_minus_one.arraySync()),
+                imageBlob: image_blob,
                 percent: (timesteps - timestep) / (1.0 * timesteps)
             });
+
             timestep--;
         }
         xt.dispose();
     }
 
 
-
-
-
-
-
-
 }
 
 
-self.postMessage({ type: 'progress', progress: 0, message: 'Loading ' + TF_JS_URL });
-import(TF_JS_URL)
-    .then(async () => {
+self.onmessage = (event) => {
+    const { offscreen, skipSteps } = event.data;
 
-        await main();
+    if (offscreen) {
+        target_canvas = offscreen;
 
-    })
-    .catch(async (err) => {
+        self.postMessage({ type: 'progress', progress: 0, message: 'Loading ' + TF_JS_CDN_URL });
+        import(TF_JS_CDN_URL)
+            .then(async () => {
 
-        try {
-            await import(TF_JS_CDN_URL);
-            await main();
-        }
-        catch {
-            self.postMessage({ type: 'error', message: 'Unable to load ' + TF_JS_URL });
-            console.log('Unable to load ' + TF_JS_URL, err);
-        }
-    });
+                await main();
+
+            })
+            .catch(async (err) => {
+                console.log('Unable to load ' + TF_JS_CDN_URL, err);
+            });
+    } else {
+        ddim_skips = skipSteps;
+    }
+
+
+};
+
+
 
 
