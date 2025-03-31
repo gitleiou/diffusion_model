@@ -65,6 +65,8 @@ $$ x_t = \sqrt{a_{t}a_{t-1}}\times x_{t-2} +  \sqrt{a_{t}(1-a_{t-1})} ϵ_{t-1} +
 </p>
 </details>
 
+$N(\mu_{1},\sigma_{1}^{2}) + N(\mu_{2},\sigma_{2}^{2}) = N(\mu_{1}+\mu_{2},\sigma_{1}^{2} + \sigma_{2}^{2})$
+
 
 $$ x_t = \sqrt{a_{t}a_{t-1}}\times x_{t-2} +  \sqrt{a_{t}(1-a_{t-1}) + 1-a_t} \times ϵ $$
 
@@ -116,7 +118,8 @@ $$ q(x_{t}|x_{0}) = \frac{1}{\sqrt{2\pi } \sqrt{1-\bar{a}_{t}}} e^{\left (  -\fr
 
 ![](denoise.jpg)
 
-Because $P(A|B) = \frac{ P(B|A)P(A) }{ P(B) }$
+Because 
+$P(A|B) = \frac{ P(B|A)P(A) }{ P(B) }$
 
 $$ p(x_{t-1}|x_{t},x_{0}) = \frac{ q(x_{t}|x_{t-1},x_{0})\times q(x_{t-1}|x_0)}{q(x_{t}|x_0)} $$
 
@@ -124,35 +127,35 @@ $$ p(x_{t-1}|x_{t},x_{0}) = \frac{ q(x_{t}|x_{t-1},x_{0})\times q(x_{t-1}|x_0)}{
   <tbody>
     <tr>
       <td>
-         $$x_{t} = \sqrt{a_t}x_{t-1}+\sqrt{1-a_t}\times ϵ$$
+         &dollar;&dollar;x_{t} = \sqrt{a_t}x_{t-1}+\sqrt{1-a_t}\times ϵ&dollar;&dollar;
       </td>
       <td>
         ~
       </td>
       <td>
-        $N(\sqrt{a_t}x_{t-1}, 1-a_{t})$
+        &dollar;N(\sqrt{a_t}x_{t-1}, 1-a_{t})&dollar;
       </td>
     </tr>
     <tr>
       <td>
-        $$x_{t-1} = \sqrt{\bar{a}_{t-1}}x_0+ \sqrt{1-\bar{a}_{t-1}}\times ϵ$$
+        &dollar;&dollar;x_{t-1} = \sqrt{\bar{a}_{t-1}}x_0+ \sqrt{1-\bar{a}_{t-1}}\times ϵ&dollar;&dollar;
       </td>
       <td>
         ~
       </td>
       <td>
-        $N( \sqrt{\bar{a}_{t-1}}x_0, 1-\bar{a}_{t-1})$
+        &dollar;N( \sqrt{\bar{a}_{t-1}}x_0, 1-\bar{a}_{t-1})&dollar;
       </td>
     </tr>
     <tr>
       <td>
-        $$x_{t} = \sqrt{\bar{a}_{t}}x_0+ \sqrt{1-\bar{a}_{t}}\times ϵ$$
+        &dollar;&dollar;x_{t} = \sqrt{\bar{a}_{t}}x_0+ \sqrt{1-\bar{a}_{t}}\times ϵ&dollar;&dollar;
       </td>
       <td>
         ~
       </td>
       <td>
-        $N( \sqrt{\bar{a}_{t}}x_0, 1-\bar{a}_{t})$
+        &dollar;N( \sqrt{\bar{a}_{t}}x_0, 1-\bar{a}_{t})&dollar;
       </td>
     </tr>
   </tbody>
@@ -195,17 +198,6 @@ $$ \Downarrow  $$
 
 $$ \frac{1}{\sqrt{2\pi} \left ( \frac{ \sqrt{1-a_t} \sqrt{1-\bar{a}_{t-1}} } {\sqrt{1-\bar{a}_{t}}} \right ) }
 exp{\left [  -\frac{1}{2}
-\left (
- \frac{(x_{t}-\sqrt{a_t}x_{t-1})^2}{1-a_t} +
- \frac{(x_{t-1}-\sqrt{\bar{a}_{t-1}}x_0)^2}{1-\bar{a}_{t-1}} -
- \frac{(x_{t}-\sqrt{\bar{a}_{t}}x_0)^2}{1-\bar{a}_{t}}
- \right )
-    \right ] } $$
-
-$$ \Downarrow  $$
-
-$$ \frac{1}{\sqrt{2\pi} \left ( \frac{ \sqrt{1-a_t} \sqrt{1-\bar{a}_{t-1}} } {\sqrt{1-\bar{a}_{t}}} \right ) }
-exp \left[  -\frac{1}{2}
 \left (
  \frac{
    x_{t}^2-2\sqrt{a_t}x_{t}x_{t-1}+{a_t}x_{t-1}^2
