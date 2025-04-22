@@ -44,7 +44,7 @@ This process is a markov chain, $x_t$ only depends on $x_{t-1}$. $q(x_{t} | x_{t
 
 $$ x_t = \sqrt{1-β_t}\times x_{t-1} + \sqrt{β_t}\times \epsilon_{t} $$
 
-* $β_t$ is not constant at each time step $t$. In fact one defines a so-called "variance schedule", which can be linear, quadratic, cosine, etc. 
+* $β_t$ is not constant at each time step $t$. In fact one defines a so-called "variance schedule", which can be linear, quadratic（二次）, cosine, etc. 
 
 $$ 0 < β_1 < β_2 < β_3 < \dots < β_T < 1 $$
 
@@ -238,4 +238,13 @@ $$ p(x_{t-1}|x_{t}) \sim N\left(
   \frac{\beta_{t} (1-\bar{a}_{t-1})}{1-\bar{a}_{t}} 
 \right) $$
 
+$$\Downarrow$$
+$$p(x_{t-1}|x_{t})\sim N(\frac{1}{\sqrt{a_{t}}}\times(x_{t}-\frac{\beta_{t}}{\sqrt{1-\bar a_{t}}}\times \epsilon),) $$
+
 **Note:** This `README.md` is intended solely for previewing on the Github page. If you wish to view the rendered page locally, please consult `README.raw.md`.
+
+Iddpm paper (https://arxiv.org/abs/2102.09672)introduced a better cosine_beta_schedule:
+$$f(t)=cos(\frac{t/T+s}{1+s}\times\frac{\pi}{2})^2$$
+$$\bar a_{t}=\frac{f(t)}{f(0)}$$
+$$\beta_{t}=1-\frac{\bar a_t}{\bar a_{t-1}}$$
+instead of ddpm's original $\beta_t$ linespace(0.0004, 0.02, 1001) 
